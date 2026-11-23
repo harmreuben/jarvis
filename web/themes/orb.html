@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: #fff; font-family: Inter, "Segoe UI", sans-serif; }
+    canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+    .captions {
+        position: fixed; left: 50%; bottom: 13vh; transform: translateX(-50%); width: min(820px, 90vw); text-align: center;
+        pointer-events: none;
+    }
+    .you { color: rgba(255, 255, 255, 0.45); font-size: 17px; font-weight: 300; min-height: 24px; transition: opacity 0.6s; }
+    .reply { color: #fff; font-size: clamp(18px, 2.3vw, 26px); font-weight: 400; line-height: 1.4; margin-top: 10px; min-height: 36px;
+             max-height: 30vh; overflow: hidden; transition: opacity 0.6s; }
+    .state { position: fixed; top: 22px; left: 0; right: 0; text-align: center; font-size: 13px; letter-spacing: 3px;
+             text-transform: uppercase; color: rgba(255, 255, 255, 0.5); }
+    .controls { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; }
+    .controls button {
+        width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.05); color: #fff; font-size: 18px; cursor: pointer; opacity: 0.55; transition: opacity 0.2s;
+    }
+    .controls button:hover, .controls button.on { opacity: 1; }
+    .controls button.on { border-color: #6ee7ff; box-shadow: 0 0 14px rgba(110, 231, 255, 0.5); }
+    #form {
+        position: fixed; left: 50%; bottom: 4vh; transform: translateX(-50%); width: min(560px, 80vw); display: none;
+    }
+    #form.show { display: block; }
+    #form input {
+        width: 100%; padding: 12px 18px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.06); color: #fff; font: inherit; font-size: 15px; outline: none;
+    }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="state" id="state"></div>
+<div class="captions"><div class="you" id="you"></div><div class="reply" id="reply"></div></div>
+<form id="form" autocomplete="off"><input id="input" type="text" placeholder="Type and press Enter…"></form>
+<div class="controls">
+    <button id="kbd" title="Type instead">⌨</button>
+    <button id="mic" title="Listening on/off (Ctrl+Space)">🎤</button>
+    <button id="gear" title="Settings">⚙</button>
+</div>
+<script src="/eel.js"></script>
+<script src="/assets/jarvis-core.js"></script>
+<script>
+    var canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+    var mode = 'idle', level = 0, energy = 0, t = 0;
+    var palette = { idle: [110, 231, 255], thinking: [170, 120, 255], speaking: [120, 255, 210], off: [90, 100, 120] };
+    var color = palette.idle.slice();
+
+    function resize() {
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    addEventListener('resize', resize); resize();
+
+    function draw() {
+        t += 0.016;
+        var target = mode === 'speaking' ? 0.55 + 0.35 * Math.abs(Math.sin(t * 7)) : mode === 'thinking' ? 0.35 : mode === 'off' ? 0.05 : level;
+        energy += (target - energy) * 0.12;
+        var goal = palette[mode] || palette.idle;
+        for (var k = 0; k < 3; k++) color[k] += (goal[k] - color[k]) * 0.05;
+        var c = color.map(Math.round).join(',');
+
+        ctx.clearRect(0, 0, innerWidth, innerHeight);
+        var cx = innerWidth / 2, cy = innerHeight * 0.42, base = Math.min(innerWidth, innerHeight) * 0.17;
+        var r = base * (1 + energy * 0.35);
+
+        var glow = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r * 2.6);
+        glow.addColorStop(0, 'rgba(' + c + ',0.35)'); glow.addColorStop(1, 'rgba(' + c + ',0)');
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cx, cy, r * 2.6, 0, Math.PI * 2); ctx.fill();
+
+        for (var layer = 0; layer < 3; layer++) {
+            ctx.beginPath();
+            var spin = mode === 'thinking' ? 2.5 : 0.6;
+            for (var a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 90) {
+                var wob = Math.sin(a * (3 + layer) + t * spin * (layer + 1)) * (4 + energy * 26) +
+                          Math.sin(a * (5 + layer * 2) - t * 1.3) * (2 + energy * 12);
+                var rr = r * (1 - layer * 0.12) + wob;
+                var x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+                if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            var g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r * 1.1);
+            g.addColorStop(0, 'rgba(255,255,255,' + (0.5 - layer * 0.12) + ')');
+            g.addColorStop(0.5, 'rgba(' + c + ',' + (0.45 - layer * 0.1) + ')');
+            g.addColorStop(1, 'rgba(' + c + ',0.05)');
+            ctx.fillStyle = g; ctx.fill();
+        }
+        requestAnimationFrame(draw);
+    }
+    draw();
+
+    var you = document.getElementById('you'), reply = document.getElementById('reply');
+    JarvisCore.on('messages', function (list) {
+        list.forEach(function (m) {
+            var tmp = document.createElement('div'); tmp.innerHTML = m.text;
+            if (m.role === 'user') { you.textContent = '“' + tmp.textContent + '”'; reply.textContent = ''; }
+            else { reply.textContent = tmp.textContent; }
+        });
+    });
+    JarvisCore.on('state', function (s) {
+        document.getElementById('state').textContent = s;
+        mode = /speaking/i.test(s) ? 'speaking' : /thinking|searching|writing|looking|reading|waiting|yes\?/i.test(s) ? 'thinking' :
+               /listening/i.test(s) ? 'idle' : 'off';
+    });
+    JarvisCore.on('level', function (l) { level = l; });
+    JarvisCore.on('listening', function (on) { document.getElementById('mic').classList.toggle('on', on); });
+    document.getElementById('kbd').addEventListener('click', function () {
+        var f = document.getElementById('form');
+        f.classList.toggle('show');
+        this.classList.toggle('on', f.classList.contains('show'));
+        if (f.classList.contains('show')) document.getElementById('input').focus();
+    });
+    JarvisCore.init({
+        form: document.getElementById('form'), input: document.getElementById('input'),
+        micButton: document.getElementById('mic'), settingsButton: document.getElementById('gear')
+    });
+</script>
+</body>
+</html>

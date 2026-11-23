@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+    :root { --g: #39ff7a; --g-dim: #1f9c4b; --g-faint: rgba(57, 255, 122, 0.08); --amber: #ffc857; --bg: #020804; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--g);
+                 font: 15px/1.55 "JetBrains Mono", Consolas, monospace; }
+    body::after { /* scanlines */
+        content: ""; position: fixed; inset: 0; pointer-events: none;
+        background: repeating-linear-gradient(rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, 0.18) 2px 3px);
+    }
+    .screen { display: flex; flex-direction: column; height: 100vh; padding: 16px 22px; text-shadow: 0 0 6px rgba(57, 255, 122, 0.45); }
+    .top { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--g-dim); padding-bottom: 8px; color: var(--g-dim); }
+    .top b { color: var(--g); }
+    .top button { background: none; border: 1px solid var(--g-dim); color: var(--g); font: inherit; cursor: pointer; padding: 0 8px; margin-left: 6px; }
+    .top button.on { background: var(--g); color: var(--bg); text-shadow: none; }
+    #log { flex: 1; overflow-y: auto; padding: 12px 0; white-space: pre-wrap; word-wrap: break-word; scrollbar-color: var(--g-dim) transparent; }
+    .line { margin: 0 0 6px; }
+    .ts { color: var(--g-dim); }
+    .user { color: var(--amber); text-shadow: 0 0 6px rgba(255, 200, 87, 0.4); }
+    .sys { color: var(--g-dim); }
+    .bottom { border-top: 1px dashed var(--g-dim); padding-top: 8px; }
+    .status { color: var(--g-dim); margin-bottom: 6px; }
+    #form { display: flex; align-items: center; gap: 8px; }
+    #form span { color: var(--g); }
+    #form input { flex: 1; background: transparent; border: 0; color: var(--g); font: inherit; outline: none; caret-color: var(--g);
+                 text-shadow: inherit; }
+    .cursor { display: inline-block; width: 9px; height: 1.1em; background: var(--g); vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="screen">
+    <div class="top">
+        <div><b id="aname">JARVIS</b> OS // MARK 5 // <span id="clock"></span></div>
+        <div><button id="mic" title="Listening on/off (Ctrl+Space)">MIC</button><button id="gear" title="Settings (/settings)">CONFIG</button></div>
+    </div>
+    <div id="log"></div>
+    <div class="bottom">
+        <div class="status">STATUS: <span id="status">BOOTING</span></div>
+        <form id="form" autocomplete="off"><span>&gt;</span><input id="input" type="text" spellcheck="false" placeholder="type a command, /help for help"></form>
+    </div>
+</div>
+<script src="/eel.js"></script>
+<script src="/assets/jarvis-core.js"></script>
+<script>
+    var log = document.getElementById('log');
+    var queue = [], typingNow = false;
+    function ts() { return new Date().toLocaleTimeString([], { hour12: false }); }
+    setInterval(function () { document.getElementById('clock').textContent = ts(); }, 1000);
+
+    function addLine(cls, prefix, text, animate, stamp) {
+        var div = document.createElement('div');
+        div.className = 'line';
+        div.innerHTML = '<span class="ts">[' + (stamp || ts()) + ']</span> <span class="' + cls + '"></span>';
+        var target = div.lastChild;
+        log.appendChild(div);
+        var full = prefix + text;
+        if (!animate) { target.textContent = full; log.scrollTop = log.scrollHeight; return; }
+        queue.push({ el: target, text: full });
+        if (!typingNow) typeNext();
+    }
+    function typeNext() {
+        var job = queue.shift();
+        if (!job) { typingNow = false; return; }
+        typingNow = true;
+        var i = 0, step = Math.max(1, Math.round(job.text.length / 120)); // long replies type faster
+        (function tick() {
+            i = Math.min(job.text.length, i + step);
+            job.el.textContent = job.text.slice(0, i);
+            log.scrollTop = log.scrollHeight;
+            if (i < job.text.length) setTimeout(tick, 14); else typeNext();
+        })();
+    }
+    function plain(html) { var d = document.createElement('div'); d.innerHTML = html.replace(/<br>/g, '\n'); return d.textContent; }
+
+    ['JARVIS OS boot sequence initiated...', 'Voice subsystem .......... online', 'Language model link ....... online',
+     'Say "Jarvis, <command>" or type below. /help lists commands.'].forEach(function (l) { addLine('sys', '', l, false); });
+
+    var name = 'JARVIS';
+    JarvisCore.on('messages', function (list, isHistory) {
+        if (isHistory) addLine('sys', '', '--- earlier conversation ---', false);
+        list.forEach(function (m) {
+            var stamp = isHistory ? '--:--:--' : null;
+            if (m.role === 'user') addLine('user', 'USER> ', plain(m.text), false, stamp);
+            else addLine('bot', name + '> ', plain(m.text), !isHistory, stamp);
+        });
+        if (isHistory) addLine('sys', '', '--- now ---', false);
+    });
+    JarvisCore.on('state', function (s) { document.getElementById('status').textContent = s.toUpperCase(); });
+    JarvisCore.on('listening', function (on) { document.getElementById('mic').classList.toggle('on', on); });
+
+    // terminal-only commands
+    document.getElementById('form').addEventListener('submit', function (e) {
+        var v = document.getElementById('input').value.trim();
+        if (v === '/clear') { e.stopImmediatePropagation(); e.preventDefault(); log.innerHTML = ''; this.reset(); }
+        else if (v === '/help') {
+            e.stopImmediatePropagation(); e.preventDefault(); this.reset();
+            ['/help      this list', '/clear     clear the screen', '/settings  open settings (key, name, interface)',
+             '/mic       voice on/off (or Ctrl+Space)', 'anything else is sent to JARVIS'].forEach(function (l) { addLine('sys', '', l, false); });
+        } else if (v === '/mic') { e.stopImmediatePropagation(); e.preventDefault(); this.reset(); JarvisCore.toggleListening(); }
+    }, true);
+
+    JarvisCore.init({
+        form: document.getElementById('form'), input: document.getElementById('input'),
+        micButton: document.getElementById('mic'), settingsButton: document.getElementById('gear')
+    });
+    eel.js_assistantname()(function (n) { name = (n || 'JARVIS').toUpperCase(); document.getElementById('aname').textContent = name; });
+    document.addEventListener('click', function (e) { if (!e.target.closest('button') && !e.target.closest('.jc-overlay')) document.getElementById('input').focus(); });
+    document.getElementById('input').focus();
+</script>
+</body>
+</html>

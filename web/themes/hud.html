@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --cyan: #3fd4ff;
+        --cyan-dim: rgba(63, 212, 255, 0.35);
+        --cyan-faint: rgba(63, 212, 255, 0.12);
+        --amber: #ffb547;
+        --bg: #02070d;
+        --text: #d9f6ff;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+        font-family: Rajdhani, "Segoe UI", sans-serif; font-size: 16px;
+    }
+    body {
+        background:
+            radial-gradient(ellipse at center, rgba(20, 80, 120, 0.35) 0%, rgba(2, 7, 13, 0) 60%),
+            linear-gradient(var(--cyan-faint) 1px, transparent 1px) 0 0 / 40px 40px,
+            linear-gradient(90deg, var(--cyan-faint) 1px, transparent 1px) 0 0 / 40px 40px,
+            var(--bg);
+    }
+    .hud {
+        position: relative; height: 100vh; width: 100vw; display: grid;
+        grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.3fr) minmax(260px, 1fr);
+        grid-template-rows: auto 1fr auto; gap: 18px; padding: 20px 26px;
+    }
+    .panel {
+        border: 1px solid var(--cyan-dim); background: rgba(5, 25, 40, 0.55); border-radius: 4px;
+        padding: 12px 16px; position: relative; backdrop-filter: blur(2px);
+        clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+    }
+    .panel h3 {
+        margin: 0 0 8px; font: 600 12px Orbitron, sans-serif; letter-spacing: 3px; color: var(--cyan);
+        text-transform: uppercase; opacity: 0.9;
+    }
+    .title {
+        grid-column: 1 / 4; display: flex; align-items: center; justify-content: space-between;
+        font-family: Orbitron, sans-serif; letter-spacing: 6px; color: var(--cyan);
+    }
+    .title .name { font-size: 22px; font-weight: 700; text-shadow: 0 0 12px var(--cyan); }
+    .title .sub { font-size: 11px; letter-spacing: 3px; opacity: 0.7; }
+    .icon-btn {
+        background: transparent; border: 1px solid var(--cyan-dim); color: var(--cyan); border-radius: 50%;
+        width: 40px; height: 40px; cursor: pointer; font-size: 18px; margin-left: 8px;
+    }
+    .icon-btn:hover { background: var(--cyan-faint); }
+    .icon-btn.on { background: var(--cyan); color: #001520; box-shadow: 0 0 16px var(--cyan); }
+
+    /* left column: clock + system */
+    .left { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+    .clock { font: 700 44px Orbitron, sans-serif; color: #fff; text-shadow: 0 0 14px var(--cyan); }
+    .date { color: var(--cyan); letter-spacing: 2px; text-transform: uppercase; }
+    .bar { margin: 8px 0 12px; }
+    .bar .label { display: flex; justify-content: space-between; font-size: 14px; letter-spacing: 1px; }
+    .bar .track { height: 6px; background: var(--cyan-faint); margin-top: 4px; }
+    .bar .fill { height: 100%; width: 0; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); transition: width 0.8s; }
+    .bar .fill.hot { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+    .help li { margin: 4px 0; color: #a9dff0; }
+    .help ul { margin: 0; padding-left: 18px; font-size: 15px; }
+
+    /* centre: arc reactor */
+    .center { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; }
+    .reactor { position: relative; width: min(46vh, 30vw); aspect-ratio: 1; }
+    .reactor svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+    .spin-a { animation: spin 18s linear infinite; transform-origin: 50% 50%; }
+    .spin-b { animation: spin 11s linear infinite reverse; transform-origin: 50% 50%; }
+    .spin-c { animation: spin 6s linear infinite; transform-origin: 50% 50%; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .core {
+        position: absolute; left: 50%; top: 50%; width: 30%; height: 30%; border-radius: 50%;
+        transform: translate(-50%, -50%) scale(var(--pulse, 1));
+        background: radial-gradient(circle, #ffffff 0%, #bff3ff 22%, var(--cyan) 55%, rgba(63, 212, 255, 0) 72%);
+        box-shadow: 0 0 40px var(--cyan), 0 0 90px rgba(63, 212, 255, 0.5);
+        transition: transform 0.08s linear;
+    }
+    .hud[data-mode="thinking"] .spin-c { animation-duration: 1.4s; }
+    .hud[data-mode="thinking"] .spin-b { animation-duration: 3s; }
+    .hud[data-mode="speaking"] .core { animation: talk 0.45s ease-in-out infinite alternate; }
+    @keyframes talk { from { transform: translate(-50%, -50%) scale(0.92); } to { transform: translate(-50%, -50%) scale(1.25); } }
+    .hud[data-mode="off"] .core { filter: grayscale(0.8) brightness(0.6); }
+    .status {
+        margin-top: 26px; font: 600 15px Orbitron, sans-serif; letter-spacing: 3px; color: var(--cyan);
+        text-transform: uppercase; text-align: center; min-height: 20px;
+    }
+    .caption { margin-top: 10px; color: #fff; font-size: 20px; text-align: center; max-width: 90%; min-height: 26px; }
+
+    /* right column: conversation log */
+    .log { display: flex; flex-direction: column; min-height: 0; }
+    .messages { flex: 1; overflow-y: auto; padding-right: 6px; scrollbar-width: thin; scrollbar-color: var(--cyan-dim) transparent; }
+    .msg { margin: 0 0 12px; font-size: 16px; line-height: 1.35; }
+    .msg .who { font: 600 11px Orbitron, sans-serif; letter-spacing: 2px; display: block; margin-bottom: 2px; }
+    .msg.user .who { color: var(--amber); }
+    .msg.assistant .who { color: var(--cyan); }
+
+    /* bottom: input */
+    .bottom { grid-column: 1 / 4; display: flex; gap: 12px; align-items: center; }
+    .bottom input {
+        flex: 1; background: rgba(5, 25, 40, 0.7); border: 1px solid var(--cyan-dim); color: #fff; padding: 12px 16px;
+        font: 500 17px Rajdhani, sans-serif; letter-spacing: 1px; outline: none;
+    }
+    .bottom input:focus { border-color: var(--cyan); box-shadow: 0 0 10px var(--cyan-dim); }
+    .bottom button.send {
+        background: var(--cyan); color: #001520; border: 0; padding: 12px 22px; font: 700 13px Orbitron, sans-serif;
+        letter-spacing: 2px; cursor: pointer;
+    }
+    @media (max-width: 900px) {
+        .hud { grid-template-columns: 1fr 1fr; }
+        .left { display: none; }
+        .title, .bottom { grid-column: 1 / 3; }
+    }
+</style>
+</head>
+<body>
+<div class="hud" id="hud" data-mode="idle">
+    <div class="title">
+        <div><span class="name" id="aname">J.A.R.V.I.S.</span><br><span class="sub">Just A Rather Very Intelligent System</span></div>
+        <div>
+            <button class="icon-btn" id="mic" title="Listening on/off (Ctrl+Space)">🎤</button>
+            <button class="icon-btn" id="gear" title="Settings">⚙</button>
+        </div>
+    </div>
+
+    <div class="left">
+        <div class="panel">
+            <h3>Local time</h3>
+            <div class="clock" id="clock">--:--</div>
+            <div class="date" id="date"></div>
+        </div>
+        <div class="panel">
+            <h3>System</h3>
+            <div class="bar"><div class="label"><span>CPU</span><span id="cpu-v">--</span></div><div class="track"><div class="fill" id="cpu"></div></div></div>
+            <div class="bar"><div class="label"><span>MEMORY</span><span id="ram-v">--</span></div><div class="track"><div class="fill" id="ram"></div></div></div>
+            <div class="bar" id="bat-row" style="display:none"><div class="label"><span>BATTERY</span><span id="bat-v">--</span></div><div class="track"><div class="fill" id="bat"></div></div></div>
+        </div>
+        <div class="panel help">
+            <h3>Try saying</h3>
+            <ul>
+                <li>"Jarvis, what's the weather today?"</li>
+                <li>"Jarvis, open Spotify"</li>
+                <li>"Jarvis, what's on my screen?"</li>
+                <li>"Jarvis, make a presentation on AI"</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="center">
+        <div class="reactor">
+            <svg viewBox="0 0 200 200" aria-hidden="true">
+                <g class="spin-a" fill="none" stroke="#3fd4ff">
+                    <circle cx="100" cy="100" r="96" stroke-opacity="0.35" stroke-width="1"/>
+                    <circle cx="100" cy="100" r="90" stroke-width="2" stroke-dasharray="40 12 4 12" stroke-opacity="0.8"/>
+                </g>
+                <g class="spin-b" fill="none" stroke="#3fd4ff">
+                    <circle cx="100" cy="100" r="76" stroke-width="6" stroke-dasharray="2 6" stroke-opacity="0.7"/>
+                    <circle cx="100" cy="100" r="68" stroke-width="1" stroke-opacity="0.5"/>
+                </g>
+                <g class="spin-c" fill="none" stroke="#bff3ff">
+                    <path d="M100 44 A56 56 0 0 1 156 100" stroke-width="3"/>
+                    <path d="M100 156 A56 56 0 0 1 44 100" stroke-width="3"/>
+                    <circle cx="100" cy="100" r="48" stroke-width="1" stroke-opacity="0.6" stroke-dasharray="10 5"/>
+                </g>
+            </svg>
+            <div class="core" id="core"></div>
+        </div>
+        <div class="status" id="status">Initialising</div>
+        <div class="caption" id="caption"></div>
+    </div>
+
+    <div class="panel log">
+        <h3>Conversation</h3>
+        <div class="messages" id="messages"></div>
+    </div>
+
+    <form class="bottom" id="form" autocomplete="off">
+        <input id="input" type="text" placeholder='Type a command, or say "Jarvis, ..."'>
+        <button class="send" type="submit">SEND</button>
+    </form>
+</div>
+
+<script src="/eel.js"></script>
+<script src="/assets/jarvis-core.js"></script>
+<script>
+    var hud = document.getElementById('hud');
+    var messages = document.getElementById('messages');
+    var caption = document.getElementById('caption');
+    var core = document.getElementById('core');
+
+    function tickClock() {
+        var d = new Date();
+        document.getElementById('clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('date').textContent = d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    setInterval(tickClock, 1000); tickClock();
+
+    function setBar(id, value) {
+        if (value === undefined) return;
+        document.getElementById(id).style.width = value + '%';
+        document.getElementById(id).classList.toggle('hot', value >= 85 && id !== 'bat');
+        document.getElementById(id + '-v').textContent = value + '%';
+    }
+    function sysinfo() {
+        eel.js_sysinfo()(function (s) {
+            setBar('cpu', s.cpu); setBar('ram', s.ram);
+            if (s.battery !== undefined) {
+                document.getElementById('bat-row').style.display = '';
+                setBar('bat', s.battery);
+                document.getElementById('bat-v').textContent = s.battery + '%' + (s.plugged ? ' ⚡' : '');
+            }
+        });
+    }
+    setInterval(sysinfo, 2000); sysinfo();
+
+    JarvisCore.on('messages', function (list) {
+        list.forEach(function (m) {
+            var div = document.createElement('div');
+            div.className = 'msg ' + m.role;
+            div.innerHTML = '<span class="who">' + m.name.toUpperCase() + '</span>' + m.text; // text is escaped by Python
+            messages.appendChild(div);
+            if (m.role === 'assistant') {
+                var tmp = document.createElement('div');
+                tmp.innerHTML = m.text;
+                var plain = tmp.textContent;
+                caption.textContent = plain.length > 220 ? plain.slice(0, 220) + '…' : plain;
+            }
+        });
+        messages.scrollTop = messages.scrollHeight;
+    });
+    JarvisCore.on('state', function (s) {
+        document.getElementById('status').textContent = s;
+        var mode = /speaking/i.test(s) ? 'speaking' : /thinking|searching|writing|looking|reading|waiting|yes\?/i.test(s) ? 'thinking' :
+                   /listening/i.test(s) ? 'idle' : 'off';
+        hud.setAttribute('data-mode', mode);
+    });
+    JarvisCore.on('listening', function (on) { document.getElementById('mic').classList.toggle('on', on); });
+    JarvisCore.on('level', function (lvl) {
+        if (hud.getAttribute('data-mode') === 'idle') core.style.setProperty('--pulse', (1 + lvl * 0.5).toFixed(3));
+    });
+    JarvisCore.init({
+        form: document.getElementById('form'), input: document.getElementById('input'),
+        micButton: document.getElementById('mic'), settingsButton: document.getElementById('gear')
+    });
+    eel.js_assistantname()(function (n) { if (n && n.toUpperCase() !== 'JARVIS') document.getElementById('aname').textContent = n.toUpperCase(); });
+</script>
+</body>
+</html>

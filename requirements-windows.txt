@@ -1,0 +1,25 @@
+# JARVIS-MARK5 (repaired) - Windows 11, Python 3.12, 64-bit.
+# Installed automatically by setup_windows.bat. Versions are pinned to the set that was tested together.
+Eel==0.18.2
+groq==1.7.0
+edge-tts==7.3.1
+pygame==2.6.1
+PyAutoGUI==0.9.54
+pyperclip==1.11.0
+pillow==13.0.0
+numpy==2.5.5
+opencv-python==5.1.0.95
+easyocr==1.7.2
+torch==2.15.0
+torchvision==0.29.2
+ddgs==9.16.1
+requests==2.34.2
+python-pptx==1.0.2
+mtranslate==1.8
+beautifulsoup4==4.15.0
+pandas==3.1.1
+openpyxl==3.1.5
+pymupdf==2.1
+psutil==7.2.2
+Send2Trash==2.2.0
+python-docx==1.2.0
