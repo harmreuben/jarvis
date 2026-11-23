@@ -5,7 +5,7 @@ A hands-free JARVIS voice assistant for **Windows 10/11**. Say *"Jarvis, …"* a
 controls your PC, works with your files, sends WhatsApp messages and email, and sets reminders.
 
 This is a working, rebuilt version of [Likhithsai2580/JARVIS-MARK5](https://github.com/Likhithsai2580/JARVIS-MARK5)
-(MIT licence). The original code could not start; this version replaces its core with a new Groq-powered brain,
+(MIT licence). The original code could not start; this version replaces its core with a new AI brain (Google Gemini, Groq or local open-source models via Ollama),
 a hands-free voice interface and a one-click Windows installer.
 
 ## Install
@@ -13,7 +13,8 @@ a hands-free voice interface and a one-click Windows installer.
 1. Click **Code → Download ZIP** above, unzip it, and move the `jarvis-main` folder somewhere short,
    e.g. `C:\Users\<you>\jarvis`.
 2. Double-click **`setup_windows.bat`**. It installs Python 3.12 if needed and everything else, then asks for a
-   free API key from [console.groq.com/keys](https://console.groq.com/keys).
+   free AI key - recommended: Google Gemini from [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+   (Groq from [console.groq.com/keys](https://console.groq.com/keys) also works, and can be added as a backup).
 3. Start JARVIS from the **JARVIS** icon it puts on your desktop.
 
 ## Update
@@ -33,7 +34,7 @@ If something goes wrong, run **`check_setup.bat`**; `jarvis.log` records what JA
 
 ## Requirements
 
-Windows 10/11 64-bit, a microphone and speakers, internet, Chrome or Edge, and a free Groq API key.
+Windows 10/11 64-bit, a microphone and speakers, internet, Chrome or Edge, and a free Google Gemini or Groq API key (or Ollama for fully local, open-source models).
 
 ## Credits
 

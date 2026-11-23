@@ -156,7 +156,14 @@
         eel.js_getsettings()(function (c) {
             var f = panel.querySelector('form');
             f.groq.value = '';
-            f.groq.placeholder = c.groq_set ? 'Saved' + (c.groq_hint ? ' (' + c.groq_hint + ')' : '') + ' - paste a new key to replace' : 'Required - get one free at console.groq.com/keys';
+            f.groq.placeholder = c.groq_set ? 'Saved' + (c.groq_hint ? ' (' + c.groq_hint + ')' : '') + ' - paste a new key to replace' : 'Not set';
+            f.gemini.value = '';
+            f.gemini.placeholder = c.gemini_set ? 'Saved' + (c.gemini_hint ? ' (' + c.gemini_hint + ')' : '') + ' - paste a new key to replace' : 'Not set (recommended)';
+            f.provider.value = c.provider || 'auto';
+            f.use_ollama.checked = !!c.use_ollama;
+            panel.querySelector('.jc-models').textContent = c.models && c.models.length
+                ? 'In use: ' + c.models.slice(0, 3).join(', ') + (c.vision && c.vision.length ? ' | images: ' + c.vision[0] : ' | images: none')
+                : 'No AI connected yet - add a key above.';
             f.user.value = c.user || '';
             f.assistant.value = c.assistant || '';
             f.language.value = c.language || 'en-US';
@@ -182,7 +189,14 @@
             '<form class="jc-panel" autocomplete="off">' +
             '<h2>Settings</h2>' +
             '<label>Interface<select name="theme"></select></label>' +
-            '<label>Groq API key<input name="groq" type="password"></label>' +
+            '<label>AI provider<select name="provider">' +
+            '<option value="auto">Automatic - use every provider below that is set up</option>' +
+            '<option value="gemini">Google Gemini first</option><option value="groq">Groq first</option>' +
+            '<option value="ollama">Ollama first (open-source, runs on this PC)</option></select></label>' +
+            '<label>Google Gemini API key - free at aistudio.google.com/apikey<input name="gemini" type="password"></label>' +
+            '<label>Groq API key - free at console.groq.com/keys<input name="groq" type="password"></label>' +
+            '<label class="jc-check"><input name="use_ollama" type="checkbox"> Also use Ollama open-source models on this PC</label>' +
+            '<div class="jc-models"></div>' +
             '<label>What should JARVIS call you?<input name="user" type="text"></label>' +
             '<label>Assistant name (also the wake word)<input name="assistant" type="text"></label>' +
             '<label>Speech language<input name="language" type="text" placeholder="en-US, en-GB, en-IN, sw-KE ..."></label>' +
@@ -200,7 +214,8 @@
         f.addEventListener('submit', function (e) {
             e.preventDefault();
             var values = {
-                groq: f.groq.value, user: f.user.value, assistant: f.assistant.value,
+                groq: f.groq.value, gemini: f.gemini.value, provider: f.provider.value, use_ollama: f.use_ollama.checked,
+                user: f.user.value, assistant: f.assistant.value,
                 language: f.language.value, wake_word: f.wake_word.checked, theme: f.theme.value,
                 country_code: f.country_code.value, email: f.email.value, email_password: f.email_password.value
             };
@@ -226,6 +241,7 @@
         '.jc-overlay .jc-panel{display:block;position:relative;inset:auto;transform:none;margin:0;text-shadow:none;text-align:left;' +
         'width:min(440px,92vw);max-height:92vh;overflow:auto;background:#12161c;color:#e8eef5;border:1px solid #2a3442;border-radius:14px;' +
         'padding:22px 24px;font:14px/1.4 system-ui,Segoe UI,sans-serif;box-shadow:0 20px 60px rgba(0,0,0,.5)}' +
+        '.jc-overlay .jc-models{margin:-4px 0 12px;font-size:12px;color:#7f93a8}' +
         '.jc-overlay .jc-panel h3{margin:18px 0 10px;font-size:14px;font-weight:600;color:#e8eef5}' +
         '.jc-overlay .jc-panel h2{margin:0 0 14px;font-size:18px;font-weight:600}' +
         '.jc-overlay .jc-panel label{display:block;margin:0 0 12px;color:#9fb0c3;font-size:13px}' +

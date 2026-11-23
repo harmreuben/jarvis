@@ -32,7 +32,7 @@ def python_version():
 
 
 def imports():
-    import cv2, easyocr, eel, edge_tts, groq, pptx, pyautogui, pygame, pyperclip, ddgs, docx, send2trash, psutil  # noqa: F401
+    import cv2, easyocr, eel, edge_tts, openai, pptx, pyautogui, pygame, pyperclip, ddgs, docx, send2trash, psutil  # noqa: F401
     if sys.platform == "win32":
         import pygetwindow  # noqa: F401
     return "all packages load"
@@ -41,30 +41,51 @@ def imports():
 brain_holder = {}
 
 
-def groq_key():
+def ai_connect():
     from backend.core.brain import Brain
     b = Brain()
     b.connect()
     brain_holder["b"] = b
-    return f"chat model {b.llm_model}, vision model {b.vision_model or 'none'}"
+    for n in b.notes:
+        print(f"          note: {n}")
+    return (f"chat: {b.targets[0].label}" + (f" (+{len(b.targets) - 1} fallback)" if len(b.targets) > 1 else "") +
+            f"; images: {b.vision_targets[0].label if b.vision_targets else 'none - add a Gemini key for screen/camera questions'}")
 
 
-def groq_reply():
+def ai_reply():
     b = brain_holder.get("b")
     if not b:
-        raise RuntimeError("skipped because the API key check failed")
-    reply = b.complete([{"role": "user", "content": "Reply with exactly: JARVIS online"}], max_tokens=20, temperature=0)
+        raise RuntimeError("skipped because no AI provider connected")
+    # generous token budget: "thinking" models (e.g. gpt-oss) reason before they answer
+    reply = b.complete([{"role": "user", "content": "Reply with exactly: JARVIS online"}], max_tokens=1000, temperature=0)
     if not reply:
-        raise RuntimeError("empty reply")
+        raise RuntimeError("the AI returned an empty reply twice")
     import json
     from backend.core import tools
     resp = b._create(messages=[{"role": "system", "content": b._system()}, {"role": "user", "content": "open notepad"}],
-                     tools=tools.TOOLS, tool_choice="auto", max_tokens=200, temperature=0)
+                     tools=tools.TOOLS, tool_choice="auto", max_tokens=1500, temperature=0)
     calls = resp.choices[0].message.tool_calls or []
     picked = [(c.function.name, json.loads(c.function.arguments or "{}").get("action")) for c in calls]
     if ("apps", "open") not in picked:
         raise RuntimeError(f"tool calling returned {picked or 'no tool'} instead of opening the app")
     return f'model says "{reply[:40]}", PC control (tool calling) works'
+
+
+def ai_vision():
+    b = brain_holder.get("b")
+    if not b or not b.vision_targets:
+        raise RuntimeError("no image-capable model (add a free Gemini key in Settings for screen/camera questions)")
+    import base64, io
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (320, 120), "white")
+    ImageDraw.Draw(img).rectangle([20, 20, 300, 100], fill=(220, 30, 30))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    answer = b.vision("What colour is the rectangle? Answer with one word.",
+                      "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode())
+    if "red" not in answer.lower():
+        raise RuntimeError(f"unexpected answer: {answer[:60]}")
+    return "can see images"
 
 
 def web_search():
@@ -138,8 +159,9 @@ if __name__ == "__main__":
     print("\nJARVIS setup check\n")
     check("Python 3.12", python_version)
     check("Python packages", imports)
-    check("Groq API key", groq_key)
-    check("Groq AI reply", groq_reply)
+    check("AI provider", ai_connect)
+    check("AI reply", ai_reply)
+    check("AI vision (screen/camera questions)", ai_vision, required=False)
     check("Web search", web_search, required=False)
     check("Online voice", online_voice, required=False)
     check("Speakers", speakers, required=False)

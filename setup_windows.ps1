@@ -92,27 +92,43 @@ Say "Packages installed." "Green"
 
 # --- 4. Settings -------------------------------------------------------------------
 Say "`n[4/5] Settings"
-$hasKey = (& $VenvPy -c "from backend.core import config; print('yes' if config.load().get('GROQ_API') else 'no')")
+$hasGemini = (& $VenvPy -c "from backend.core import config; print('yes' if config.load().get('GEMINI_API_KEY') else 'no')")
+$hasGroq = (& $VenvPy -c "from backend.core import config; print('yes' if config.load().get('GROQ_API') else 'no')")
+$hasGemini = ($hasGemini -and $hasGemini.Trim() -eq "yes")
+$hasGroq = ($hasGroq -and $hasGroq.Trim() -eq "yes")
 $askKey = $true
-if ($hasKey -and $hasKey.Trim() -eq "yes") {
-    $answer = Read-Host "A Groq API key is already saved. Replace it? (y/N)"
+if ($hasGemini -or $hasGroq) {
+    $saved = @(); if ($hasGemini) { $saved += "Gemini" }; if ($hasGroq) { $saved += "Groq" }
+    $answer = Read-Host "AI key(s) already saved: $($saved -join ', '). Add or replace a key? (y/N)"
     $askKey = ($answer -match "^[yY]")
 }
 if ($askKey) {
-    Say "JARVIS uses Groq (free) for its AI. Get a key at https://console.groq.com/keys (sign in, 'Create API Key', copy it)." "Yellow"
-    Start-Process "https://console.groq.com/keys"
-    $key = ""
-    while (-not $key) {
-        $key = (Read-Host "Paste your Groq API key here and press Enter").Trim()
+    Say "JARVIS needs a free AI key. Recommended: Google Gemini (fast, can also see your screen and camera)." "Yellow"
+    Say "  1. Sign in at https://aistudio.google.com/apikey  2. Click 'Create API key'  3. Copy it." "Yellow"
+    Start-Process "https://aistudio.google.com/apikey"
+    $gem = (Read-Host "Paste your Gemini API key (or press Enter to use Groq instead)").Trim()
+    if ($gem) { $env:JARVIS_SETUP_GEMINI = $gem }
+    $groqPrompt = "Optional: paste a Groq API key too, as a backup (or press Enter to skip)"
+    if (-not $gem) {
+        Say "Groq: sign in at https://console.groq.com/keys, click 'Create API Key' and copy it." "Yellow"
+        Start-Process "https://console.groq.com/keys"
+        $groqPrompt = "Paste your Groq API key"
     }
-    $env:JARVIS_SETUP_KEY = $key
+    $groq = (Read-Host $groqPrompt).Trim()
+    while (-not $gem -and -not $groq -and -not $hasGemini -and -not $hasGroq) {
+        $groq = (Read-Host "JARVIS needs at least one key. Paste a Groq or Gemini key").Trim()
+        if ($groq -match "^AIza") { $env:JARVIS_SETUP_GEMINI = $groq; $gem = $groq; $groq = "" }
+    }
+    if ($groq -match "^AIza") { $env:JARVIS_SETUP_GEMINI = $groq; $groq = "" }  # a Gemini key pasted in the Groq box
+    if ($groq) { $env:JARVIS_SETUP_KEY = $groq }
 }
 $name = (Read-Host "What should JARVIS call you? (Enter = Sir)").Trim()
 if (-not $name) { $name = "Sir" }
 $env:JARVIS_SETUP_NAME = $name
-& $VenvPy -c "import os; from backend.core import config; u = {'USER_NAME': os.environ['JARVIS_SETUP_NAME']}; k = os.environ.get('JARVIS_SETUP_KEY'); u.update({'GROQ_API': k} if k else {}); config.save(u); print('Settings saved to config\\config.json')"
+& $VenvPy -c "import os; from backend.core import config; u = {'USER_NAME': os.environ['JARVIS_SETUP_NAME']}; k = os.environ.get('JARVIS_SETUP_KEY'); g = os.environ.get('JARVIS_SETUP_GEMINI'); u.update({'GROQ_API': k} if k else {}); u.update({'GEMINI_API_KEY': g} if g else {}); config.save(u); print('Settings saved to config\\config.json')"
 if ($LASTEXITCODE -ne 0) { Fail "Could not save settings." }
 Remove-Item Env:\JARVIS_SETUP_KEY -ErrorAction SilentlyContinue
+Remove-Item Env:\JARVIS_SETUP_GEMINI -ErrorAction SilentlyContinue
 
 # --- 5. Self-test + shortcut ----------------------------------------------------------
 Say "`n[5/5] Testing everything..."

@@ -1,7 +1,7 @@
 # JARVIS-MARK5 (repaired) - Windows 11, Python 3.12, 64-bit.
 # Installed automatically by setup_windows.bat. Versions are pinned to the set that was tested together.
 Eel==0.18.2
-groq==1.7.0
+openai==3.57.0
 edge-tts==7.3.1
 pygame==2.6.1
 PyAutoGUI==0.9.54

@@ -8,7 +8,8 @@
    - install Python 3.12 if it's missing (using winget),
    - create a private Python environment in the `venv` folder and install all packages
      (about 1-2 GB the first time, 5-15 minutes),
-   - open https://console.groq.com/keys so you can create a **free Groq API key**, and ask you to paste it,
+   - open https://aistudio.google.com/apikey so you can create a **free Google Gemini API key** and ask you to paste it
+     (or press Enter to use a free Groq key from https://console.groq.com/keys instead; you can add both),
    - run a self-test and put a **JARVIS** shortcut on your desktop.
 3. If Windows SmartScreen warns about the .bat file, click "More info" -> "Run anyway".
 
@@ -25,7 +26,7 @@ You can run `setup_windows.bat` again at any time; it repairs or updates the ins
   wait for "Yes?", then say the command.
 - **Ctrl+Space** (or clicking the mic) turns listening off and on.
 - **Type:** use the text box. Typed commands don't need "Jarvis".
-- Change the interface, your Groq key, your name, the speech language or the wake word under **Settings** (⚙).
+- Change the interface, your AI keys and provider, your name, the speech language or the wake word under **Settings** (⚙).
 - To make every phrase a command (no wake word), set `"REQUIRE_WAKE_WORD": false` in `config\config.json`.
 
 ## Interfaces
@@ -73,10 +74,21 @@ Start voice commands with "Jarvis". Say **"Jarvis, stop"** at any time to cut it
   In JARVIS Settings enter your Gmail address and that 16-letter app password. (Yahoo, iCloud and Zoho work the same way.
   Outlook/Hotmail don't allow app passwords any more; for them JARVIS opens a ready-to-send draft in your mail app.)
 
+## AI providers
+
+| Provider | Key | Notes |
+|---|---|---|
+| **Google Gemini** (recommended) | free at https://aistudio.google.com/apikey | fast, good at PC control, can see your screen and camera |
+| **Groq** | free at https://console.groq.com/keys | very fast; free models change over time and currently can't see images |
+| **Ollama** (open source, runs on your PC) | no key, no limits | install from https://ollama.com, then in a terminal run `ollama pull qwen3` (and `ollama pull gemma3` for images); tick "Also use Ollama" in Settings. Needs a strong PC (16 GB RAM or a good graphics card) |
+
+Add more than one: JARVIS uses the first that works and switches automatically if one fails or runs out.
+
 ## Speed and limits
 
 - JARVIS uses one AI request for most commands, and starts speaking after the first sentence.
-- Groq's free plan has a daily limit per model. When one model runs out, JARVIS switches to the next automatically;
+- Free AI plans have daily limits per model. When one model runs out, JARVIS switches to the next model, and then to
+  your other provider if you've added a second key (Gemini + Groq is a good pair);
   if all are used up it tells you, and the limits reset during the day.
 - `jarvis.log` in the JARVIS folder records each request, which tools ran and how long each step took.
   If something is slow or wrong, send that file.
@@ -86,7 +98,7 @@ Start voice commands with "Jarvis". Say **"Jarvis, stop"** at any time to cut it
 You never need to delete or reinstall JARVIS. Close the JARVIS window and double-click **`update_jarvis.bat`**.
 
 It checks https://github.com/harmreuben/jarvis for a newer version, downloads it, replaces only the
-program files, installs any new packages (usually seconds) and keeps your Groq key and other settings, contacts,
+program files, installs any new packages (usually seconds) and keeps your AI keys and other settings, contacts,
 reminders and chat history (they live in the `config` folder and `ChatLog.json`, which updates never replace).
 If it says "already up to date", you have the latest version.
 
@@ -97,7 +109,10 @@ Without internet access to GitHub you can still update from a zip: put the `jarv
 
 - Double-click **`check_setup.bat`**. It tests the API key, AI replies, web search, voice,
   speakers, browser, screen capture and webcam, and says exactly what failed.
-- **"Groq API key was rejected"**: create a new key at https://console.groq.com/keys and paste it in Settings.
+- **"API key was rejected"**: create a new key (Gemini: https://aistudio.google.com/apikey, Groq: https://console.groq.com/keys)
+  and paste it in Settings.
+- **Empty or no AI replies**: run `check_setup.bat`; the "AI provider" line shows which models are in use.
+  Adding a second provider's key gives JARVIS a backup.
 - **Mic does nothing**: make sure you start with "Jarvis", and that the status under the orb says
   "Listening". Allow microphone access for the JARVIS window (click the lock/mic icon in its address area),
   and check Windows Settings -> Privacy & security -> Microphone. Voice input needs internet.
@@ -110,7 +125,7 @@ Without internet access to GitHub you can still update from a zip: put the `jarv
 The original code could not start (syntax error, missing imports, retired AI models, wrong function calls) and
 most features depended on dead free APIs. This version:
 
-- uses one free Groq API key for chat, command routing and image understanding, and picks models that are
+- uses a free Google Gemini or Groq key (or local Ollama models) for chat, PC control and image understanding, and picks models that are
   currently available on your account automatically (so retired models don't break it);
 - shows replies in the window, keeps chat history (`ChatLog.json`), works by voice or text;
 - never runs AI-written code without your explicit "Yes";

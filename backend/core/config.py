@@ -8,7 +8,11 @@ CONFIG_PATH = os.path.join(ROOT_DIR, "config", "config.json")
 CHATLOG_PATH = os.path.join(ROOT_DIR, "ChatLog.json")
 
 DEFAULTS = {
-    "GROQ_API": "",
+    "AI_PROVIDER": "auto",      # auto (use every provider that's set up), gemini, groq or ollama
+    "GEMINI_API_KEY": "",       # free key: https://aistudio.google.com/apikey
+    "GROQ_API": "",             # free key: https://console.groq.com/keys
+    "USE_OLLAMA": False,        # also use open-source models running locally in Ollama (https://ollama.com)
+    "OLLAMA_URL": "",           # default http://localhost:11434/v1
     "LLM_MODEL": "",        # empty = pick the best available Groq model automatically
     "VISION_MODEL": "",     # empty = pick automatically
     "USER_NAME": "Sir",

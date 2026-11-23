@@ -203,7 +203,11 @@ def js_assistantname():
 def js_getsettings():
     c = config.load()
     key = c.get("GROQ_API") or ""
+    gkey = c.get("GEMINI_API_KEY") or ""
     return {"groq_set": bool(key), "groq_hint": ("..." + key[-4:]) if len(key) > 8 else "",
+            "gemini_set": bool(gkey), "gemini_hint": ("..." + gkey[-4:]) if len(gkey) > 8 else "",
+            "provider": c.get("AI_PROVIDER") or "auto", "use_ollama": bool(c.get("USE_OLLAMA")),
+            "models": [t.label for t in brain.targets], "vision": [t.label for t in brain.vision_targets],
             "assistant": c.get("ASSISTANT_NAME", ""), "user": c.get("USER_NAME", ""),
             "language": c.get("INPUT_LANGUAGE", "en-US"), "wake_word": bool(c.get("REQUIRE_WAKE_WORD", True)),
             "theme": _theme_id(c.get("THEME")), "themes": [{"id": t, "name": n, "page": "/" + p} for t, n, p in THEMES],
@@ -225,18 +229,23 @@ def js_savesettings(values):
     global _startup_error
     values = values or {}
     updates = {}
-    for field, key in (("groq", "GROQ_API"), ("assistant", "ASSISTANT_NAME"), ("user", "USER_NAME"), ("language", "INPUT_LANGUAGE"),
+    for field, key in (("groq", "GROQ_API"), ("gemini", "GEMINI_API_KEY"), ("assistant", "ASSISTANT_NAME"), ("user", "USER_NAME"), ("language", "INPUT_LANGUAGE"),
                        ("email", "EMAIL_ADDRESS"), ("email_password", "EMAIL_APP_PASSWORD"), ("country_code", "COUNTRY_CODE")):
         v = str(values.get(field) or "").strip()
         if v:
             updates[key] = v
+    if values.get("provider") in ("auto", "gemini", "groq", "ollama"):
+        updates["AI_PROVIDER"] = values["provider"]
+    if "use_ollama" in values:
+        updates["USE_OLLAMA"] = bool(values["use_ollama"])
+    ai_changed = any(k in updates and updates[k] != brain.cfg.get(k) for k in ("GROQ_API", "GEMINI_API_KEY", "AI_PROVIDER", "USE_OLLAMA"))
     if "wake_word" in values:
         updates["REQUIRE_WAKE_WORD"] = bool(values["wake_word"])
     if values.get("theme"):
         updates["THEME"] = _theme_id(values["theme"])
     brain.cfg = config.save(updates)
     result = {"ok": True, "message": "Settings saved.", "page": "/" + _theme_page(brain.cfg.get("THEME"))}
-    if "GROQ_API" in updates or _startup_error:
+    if ai_changed or _startup_error:
         try:
             brain.connect()
             _startup_error = None

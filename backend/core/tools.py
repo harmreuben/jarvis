@@ -49,7 +49,7 @@ TOOLS = [
         {"action": _enum("find", "open", "read", "list", "create_folder", "write", "move", "copy", "rename", "delete"),
          "path": S, "destination": {"type": "string", "description": "target folder for move/copy/create_folder/write, or the new name for rename"},
          "content": {"type": "string", "description": "text for write"},
-         "file_type": _enum("", "pdf", "word", "excel", "powerpoint", "image", "video", "music", "text", "zip", "program")},
+         "file_type": _enum("pdf", "word", "excel", "powerpoint", "image", "video", "music", "text", "zip", "program")},
         ["action"]),
     _fn("contacts", "Saved contacts (names with phone numbers and emails) used for WhatsApp and email.",
         {"action": _enum("add", "list", "remove"), "name": S, "phone": {"type": "string", "description": "with country code if known, e.g. +254712345678"},

@@ -1,4 +1,5 @@
-"""JARVIS brain: one Groq call per request. The model either answers directly or calls tools (backend/core/tools.py)."""
+"""JARVIS brain: one AI call per request. The model either answers directly or calls tools (backend/core/tools.py).
+Works with Google Gemini, Groq and Ollama (backend/core/providers.py), switching automatically when one fails."""
 import json
 import logging
 import os
@@ -6,25 +7,12 @@ import threading
 import time
 from datetime import datetime
 
-import groq
-from groq import Groq, AuthenticationError
+import openai
 
-from backend.core import actions, config, tools
+from backend.core import actions, config, providers, tools
 from backend.core.presentation import SLIDE_PROMPT, build_pptx
 
 log = logging.getLogger("jarvis")
-
-LLM_PREFERENCES = [
-    "llama-3.3-70b-versatile",
-    "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
-    "llama-3.1-8b-instant",
-]
-VISION_PREFERENCES = [
-    "meta-llama/llama-4-scout-17b-16e-instruct",
-    "meta-llama/llama-4-maverick-17b-128e-instruct",
-]
-NOT_CHAT_MODELS = ("whisper", "guard", "tts", "playai", "orpheus", "prompt-guard", "distil", "llama-4", "compound", "allam")
 
 TASK_PROMPT = """Write a complete Python 3 script that performs this task on a Windows 11 PC.
 Rules:
@@ -41,43 +29,39 @@ class Brain:
     def __init__(self, on_status=None):
         self.cfg = config.load()
         self.on_status = on_status or (lambda s: None)
-        self.client = None
-        self.llm_model = None
-        self.fallback_models = []
-        self.vision_model = None
+        self.targets = []         # chat models, best first, across all providers
+        self.vision_targets = []  # image-capable models
+        self.notes = []
         self.history = self._load_history()
         self._history_lock = threading.Lock()
         self._limited_until = {}  # model -> time when its rate limit should be over
 
     # ---------- setup ----------
     def connect(self) -> None:
-        """Validates the Groq key and picks models that are currently available on the account."""
-        key = (self.cfg.get("GROQ_API") or "").strip()
-        if not key:
-            raise RuntimeError("No Groq API key set. Open Settings in JARVIS (or run setup again) and paste your key from console.groq.com/keys.")
-        self.client = Groq(api_key=key, timeout=45, max_retries=1)
-        try:
-            available = [m.id for m in self.client.models.list().data]
-        except AuthenticationError:
-            raise RuntimeError("Your Groq API key was rejected. Create a new one at console.groq.com/keys and save it in Settings.")
-        self.llm_model = self._pick(self.cfg.get("LLM_MODEL"), LLM_PREFERENCES, available, vision=False)
-        self.vision_model = self._pick(self.cfg.get("VISION_MODEL"), VISION_PREFERENCES, available, vision=True)
-        if not self.llm_model:
-            raise RuntimeError("No usable chat model found on your Groq account.")
-        self.fallback_models = [m for m in LLM_PREFERENCES if m in available and m != self.llm_model]
-        print(f"[brain] chat model: {self.llm_model} (fallbacks: {', '.join(self.fallback_models) or 'none'}) | "
-              f"vision model: {self.vision_model or 'none available'}")
+        """Connects to every configured AI provider and picks the models available on each account."""
+        self.cfg = config.load()
+        if not any((self.cfg.get(k) or "").strip() for k in ("GEMINI_API_KEY", "GROQ_API")) and \
+                (self.cfg.get("AI_PROVIDER") != "ollama" and not self.cfg.get("USE_OLLAMA")):
+            raise RuntimeError("No AI key set. Open Settings and paste a free Google Gemini key (aistudio.google.com/apikey) "
+                               "or a Groq key (console.groq.com/keys).")
+        self.targets, self.vision_targets, self.notes = providers.discover(self.cfg)
+        for n in self.notes:
+            print(f"[brain] {n}")
+            log.warning(n)
+        if not self.targets:
+            raise RuntimeError("I couldn't connect to any AI provider: " + "; ".join(self.notes or ["unknown error"]) +
+                               ". Check your keys in Settings and your internet connection.")
+        self._limited_until.clear()
+        print(f"[brain] chat: {', '.join(t.label for t in self.targets)} | "
+              f"vision: {', '.join(t.label for t in self.vision_targets) or 'none available'}")
 
-    @staticmethod
-    def _pick(configured, preferences, available, vision):
-        if configured and configured in available:
-            return configured
-        for m in preferences:
-            if m in available:
-                return m
-        if vision:
-            return next((m for m in available if "llama-4" in m or "vision" in m), None)
-        return next((m for m in available if not any(x in m.lower() for x in NOT_CHAT_MODELS)), None)
+    @property
+    def llm_model(self):
+        return self.targets[0].model if self.targets else None
+
+    @property
+    def vision_model(self):
+        return self.vision_targets[0].model if self.vision_targets else None
 
     # ---------- chat history (shown in the GUI) ----------
     def _load_history(self):
@@ -112,44 +96,79 @@ class Brain:
                 f"Replies are read aloud: keep them short and natural (1-3 sentences) unless asked for detail. No markdown tables. "
                 f"Current local date and time: {datetime.now():%A %d %B %Y, %H:%M}.")
 
-    def _create(self, **kwargs):
-        """chat.completions.create with automatic fallback to other models when one is rate-limited."""
-        models = [kwargs.pop("model", None) or self.llm_model] + [m for m in self.fallback_models]
-        last_error = None
-        for m in models:
-            if self._limited_until.get(m, 0) > time.time():
+    def _create(self, targets=None, **kwargs):
+        """chat.completions.create on the best available model; moves on to the next model/provider on failure."""
+        targets = self.targets if targets is None else targets
+        last_error, bad_request = None, None
+        for t in targets:
+            key = (t.provider, t.model)
+            if self._limited_until.get(key, 0) > time.time() or self._limited_until.get(t.provider, 0) > time.time():
                 continue
             try:
                 t0 = time.time()
-                resp = self.client.chat.completions.create(model=m, **kwargs)
-                log.info("groq %s %.2fs", m, time.time() - t0)
+                resp = t.client.chat.completions.create(model=t.model, **kwargs)
+                log.info("%s %.2fs", t.label, time.time() - t0)
                 return resp
-            except groq.RateLimitError as e:
+            except openai.RateLimitError as e:
                 wait = 60.0
                 try:
                     wait = float(e.response.headers.get("retry-after", 60))
                 except Exception:
                     pass
-                self._limited_until[m] = time.time() + wait
-                log.warning("rate limited on %s for %.0fs, trying next model", m, wait)
+                self._limited_until[key] = time.time() + min(wait, 3600)
+                log.warning("%s rate limited for %.0fs; trying the next model", t.label, wait)
                 last_error = e
-            except groq.APIConnectionError as e:
-                raise RuntimeError("I can't reach the Groq servers. Check your internet connection.") from e
-        raise RuntimeError("Groq's free limit is used up on all models right now. Try again in a little while "
-                           "(limits reset during the day).") from last_error
+            except (openai.APIConnectionError, openai.APITimeoutError) as e:
+                self._limited_until[t.provider] = time.time() + 30
+                log.warning("%s unreachable: %s", t.label, e)
+                last_error = e
+            except (openai.AuthenticationError, openai.PermissionDeniedError) as e:
+                self._limited_until[t.provider] = time.time() + 600
+                log.warning("%s rejected the key: %s", t.label, e)
+                last_error = e
+            except openai.NotFoundError as e:
+                self._limited_until[key] = time.time() + 3600
+                log.warning("%s model not found: %s", t.label, e)
+                last_error = e
+            except openai.BadRequestError as e:
+                log.warning("%s bad request: %s", t.label, e)
+                bad_request = bad_request or e
+            except openai.APIStatusError as e:  # 5xx and other server-side trouble
+                self._limited_until[key] = time.time() + 20
+                log.warning("%s server error: %s", t.label, e)
+                last_error = e
+        if bad_request is not None:
+            raise bad_request
+        if isinstance(last_error, openai.RateLimitError):
+            raise RuntimeError("The free AI limits are used up on all your providers right now. Try again in a little "
+                               "while, or add another provider's key in Settings.") from last_error
+        if isinstance(last_error, (openai.APIConnectionError, openai.APITimeoutError)):
+            raise RuntimeError("I can't reach the AI service. Check your internet connection.") from last_error
+        raise RuntimeError("No AI model is available right now" + (f" ({last_error})" if last_error else "") +
+                           ". Check your keys in Settings.") from last_error
 
-    def complete(self, messages, model=None, max_tokens=1024, temperature=0.6) -> str:
-        resp = self._create(model=model, messages=messages, max_tokens=max_tokens, temperature=temperature)
+    @staticmethod
+    def _text(resp) -> str:
         return (resp.choices[0].message.content or "").strip()
 
+    def complete(self, messages, max_tokens=2048, temperature=0.6, targets=None) -> str:
+        resp = self._create(targets=targets, messages=messages, max_tokens=max_tokens, temperature=temperature)
+        text = self._text(resp)
+        if not text and resp.choices[0].finish_reason == "length":
+            # "Thinking" models can spend the whole budget reasoning; give them room and ask again.
+            resp = self._create(targets=targets, messages=messages, max_tokens=min(max(max_tokens * 4, 4096), 8192),
+                                temperature=temperature)
+            text = self._text(resp)
+        return text
+
     def vision(self, question: str, data_url: str) -> str:
-        if not self.vision_model:
-            return "No image-capable model is available on your Groq account right now."
+        if not self.vision_targets:
+            return ("None of your AI providers can look at images right now. Add a free Google Gemini key in Settings "
+                    "to use the screen and camera features.")
         messages = [{"role": "system", "content": self._system()},
                     {"role": "user", "content": [{"type": "text", "text": question},
                                                  {"type": "image_url", "image_url": {"url": data_url}}]}]
-        resp = self.client.chat.completions.create(model=self.vision_model, messages=messages, max_tokens=500)
-        return (resp.choices[0].message.content or "").strip()
+        return self.complete(messages, max_tokens=1500, targets=self.vision_targets) or "I couldn't make out anything."
 
     # ---------- main entry ----------
     def handle(self, query: str) -> str:
@@ -175,15 +194,18 @@ class Brain:
         for _round in range(MAX_TOOL_ROUNDS):
             try:
                 resp = self._create(messages=messages, tools=tools.TOOLS, tool_choice="auto",
-                                    max_tokens=1024, temperature=0.3)
-            except groq.BadRequestError as e:
+                                    max_tokens=2048, temperature=0.3)
+                if not resp.choices[0].message.tool_calls and not self._text(resp) and resp.choices[0].finish_reason == "length":
+                    resp = self._create(messages=messages, tools=tools.TOOLS, tool_choice="auto",
+                                        max_tokens=8192, temperature=0.3)
+            except openai.BadRequestError as e:
                 # The model produced a malformed tool call: retry once as plain chat.
                 log.warning("tool call failed (%s); answering without tools", e)
                 return self.complete(messages[:1] + history + [{"role": "user", "content": query}])
             msg = resp.choices[0].message
             calls = msg.tool_calls or []
             if not calls:
-                text = (msg.content or "").strip()
+                text = (msg.content or "").strip() or ("" if spoken else "Sorry, I didn't get an answer that time. Please try again.")
                 return " ".join(spoken + [text]).strip() if spoken else text
             messages.append({"role": "assistant", "content": msg.content or "",
                              "tool_calls": [{"id": c.id, "type": "function",
