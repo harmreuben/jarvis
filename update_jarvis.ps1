@@ -33,6 +33,25 @@ $old = "unknown"
 if (Test-Path (Join-Path $Root "VERSION")) { $old = (Get-Content (Join-Path $Root "VERSION") -TotalCount 1).Trim() }
 $tmpZip = $null
 
+# --- A folder linked to GitHub with git (e.g. opened in VS Code): update with git ---------
+$gitDone = $false
+$gitExe = Get-Command git -ErrorAction SilentlyContinue
+if (-not $Zip -and $gitExe -and (Test-Path (Join-Path $Root ".git"))) {
+    Say "This folder is linked to GitHub with git - getting the latest version with 'git pull'..."
+    $before = (& git -C $Root rev-parse HEAD 2>$null)
+    & git -C $Root pull --ff-only origin $Branch
+    if ($LASTEXITCODE -ne 0) {
+        Fail "git pull failed (see the message above). If you changed files in this folder, commit or undo those changes in VS Code (Source Control), then run the update again."
+    }
+    $after = (& git -C $Root rev-parse HEAD 2>$null)
+    $new = $old
+    if (Test-Path (Join-Path $Root "VERSION")) { $new = (Get-Content (Join-Path $Root "VERSION") -TotalCount 1).Trim() }
+    if ($before -eq $after) { Say "Code already up to date (version $new). Checking packages anyway..." "Green" }
+    else { Say "Code updated: $old -> $new" "Green" }
+    $gitDone = $true
+}
+
+if (-not $gitDone) {
 # --- 1. get the new version: from GitHub, or a zip you provide -----------------------
 if (-not $Zip) {
     Say "Checking GitHub ($GitHubRepo) for a new version..."
@@ -97,6 +116,8 @@ Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 if ($tmpZip) { Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue }
 if ($rc -ge 8) { Fail "Copying files failed (robocopy code $rc). Close any open JARVIS files and try again." }
 Say "Files updated." "Green"
+
+}  # end of the zip-based update
 
 # --- 4. install any new packages (fast: already-installed ones are skipped) -----------
 $VenvPy = Join-Path $Root "venv\Scripts\python.exe"

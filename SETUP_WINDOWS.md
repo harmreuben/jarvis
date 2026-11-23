@@ -102,6 +102,9 @@ program files, installs any new packages (usually seconds) and keeps your AI key
 reminders and chat history (they live in the `config` folder and `ChatLog.json`, which updates never replace).
 If it says "already up to date", you have the latest version.
 
+If the folder is linked to GitHub with git (for example you cloned it or opened it in VS Code), the updater uses
+`git pull` instead of downloading a zip, and always re-checks the Python packages afterwards.
+
 Without internet access to GitHub you can still update from a zip: put the `jarvis-main.zip` from GitHub in Downloads
 (or drag it onto `update_jarvis.bat`).
 
